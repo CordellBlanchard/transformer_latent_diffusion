@@ -23,7 +23,7 @@ class DenoiserConfig:
     image_size: int = 32
     noise_embed_dims: int = 128
     patch_size: int = 2
-    embed_dim: int = 64
+    embed_dim: int = 512
     dropout: float = 0
     n_layers: int = 3
     text_emb_size: int = 768

@@ -117,6 +117,7 @@ def main(config: ModelConfig) -> None:
     if accelerator.is_local_main_process:
         ema_model = copy.deepcopy(model).to(accelerator.device)
         diffuser = DiffusionGenerator(ema_model, vae, accelerator.device, torch.float32)
+        teacher_diffuser = DiffusionGenerator(teacher_denoiser, vae, accelerator.device, torch.float32)
 
     accelerator.print("model prep")
     model, train_loader, optimizer = accelerator.prepare(model, train_loader, optimizer)
@@ -156,8 +157,12 @@ def main(config: ModelConfig) -> None:
                     ##eval and saving:
                     out = eval_gen(diffuser=diffuser, labels=emb_val, img_size=denoiser_config.image_size)
                     out.save("img.jpg")
+                    teacher_out = eval_gen(diffuser=teacher_diffuser, labels=emb_val, img_size=denoiser_config.image_size)
+                    teacher_out.save("teacher_img.jpg")
                     if train_config.use_wandb:
-                        accelerator.log({f"step: {global_step}": wandb.Image("img.jpg")})
+                        accelerator.log({f"step (student): {global_step}": wandb.Image("img.jpg")})
+                        accelerator.log({f"step (teacher): {global_step}": wandb.Image("teacher_img.jpg")})
+
 
                     opt_unwrapped = accelerator.unwrap_model(optimizer)
                     full_state_dict = {
