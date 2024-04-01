@@ -188,7 +188,7 @@ def main(config: ModelConfig) -> None:
                 
                 total_loss = reconstruction_loss + train_config.output_weight * distillation_loss + train_config.feature_weight * feature_loss
 
-                accelerator.log({"train_loss": total_loss.item(), "reconstruction_loss": reconstruction_loss.item(), "distillation_loss": distillation_loss.item()}, step=global_step)
+                accelerator.log({"train_loss": total_loss.item(), "reconstruction_loss": reconstruction_loss.item(), "distillation_loss": distillation_loss.item(), "feature_loss": feature_loss.item()}, step=global_step)
                 accelerator.backward(total_loss)
                 optimizer.step()
 
