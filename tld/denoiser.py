@@ -71,15 +71,19 @@ class DenoiserTransBlock(nn.Module):
 
         self.out_proj = nn.Sequential(nn.Linear(self.embed_dim, patch_dim), self.rearrange2)
 
-    def forward(self, x, cond):
+    def forward(self, x, cond, return_features=False):
+        features = [] # holds intermediate values
         x = self.patchify_and_embed(x)
         pos_enc = self.precomputed_pos_enc[: x.size(1)].expand(x.size(0), -1)
         x = x + self.pos_embed(pos_enc)
 
         for block in self.decoder_blocks:
             x = block(x, cond)
+            if return_features:
+                features.append(x)
 
-        return self.out_proj(x)
+        output = self.out_proj(x)
+        return (output, features) if return_features else output
 
 
 class Denoiser(nn.Module):
@@ -113,7 +117,7 @@ class Denoiser(nn.Module):
         self.norm = nn.LayerNorm(self.embed_dim)
         self.label_proj = nn.Linear(text_emb_size, self.embed_dim)
 
-    def forward(self, x, noise_level, label):
+    def forward(self, x, noise_level, label, return_features=False):
         noise_level = self.fourier_feats(noise_level).unsqueeze(1)
 
         label = self.label_proj(label).unsqueeze(1)
@@ -121,6 +125,6 @@ class Denoiser(nn.Module):
         noise_label_emb = torch.cat([noise_level, label], dim=1)  # bs, 2, d
         noise_label_emb = self.norm(noise_label_emb)
 
-        x = self.denoiser_trans_block(x, noise_label_emb)
+        x, features = self.denoiser_trans_block(x, noise_label_emb, return_features=return_features)
 
-        return x
+        return (x, features) if return_features else x

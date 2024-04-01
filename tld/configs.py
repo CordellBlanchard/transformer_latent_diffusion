@@ -20,15 +20,15 @@ class DataDownloadConfig:
 
 @dataclass
 class DenoiserConfig:
-    image_size: int = 16
-    noise_embed_dims: int = 256
-    patch_size: int = 2
-    embed_dim: int = 128
-    dropout: float = 0
-    n_layers: int = 3
-    text_emb_size: int = 768
-    n_channels: int = 4 
-    mlp_multiplier: int = 4 
+    image_size: int = 16,
+    noise_embed_dims: int = 128,  # Reduced embedding dimensions
+    patch_size: int = 2,
+    embed_dim: int = 64,  # Further reduced embedding dimension
+    dropout: float = 0,
+    n_layers: int = 2,  # Fewer layers
+    text_emb_size: int = 768,
+    n_channels: int = 4,  
+    mlp_multiplier: int = 2,  # Reduced MLP size
 
 @dataclass
 class DenoiserLoad:
@@ -60,6 +60,8 @@ class TrainConfig:
     lr: float = 3e-4
     n_epoch: int = 100
     alpha: float = 0.999
+    output_weight = 1
+    feature_weight = 1
     from_scratch: bool = True
     beta_a: float = 0.75
     beta_b: float = 0.75
