@@ -65,6 +65,7 @@ def main(config: ModelConfig) -> None:
     denoiser_config = config.denoiser_config
     train_config = config.train_config
     dataconfig = config.data_config
+    teacher_embed_dim = 768
 
     log_with="wandb" if train_config.use_wandb else None
     accelerator = Accelerator(mixed_precision="fp16", log_with=log_with)
@@ -81,11 +82,11 @@ def main(config: ModelConfig) -> None:
     if accelerator.is_main_process:
         vae = vae.to(accelerator.device)
 
-    # load teacher model based on original from: TODO
+    adjustment_layer = nn.Linear(denoiser_config.embed_dim, teacher_embed_dim).to(accelerator.device) # used for feature distillation to match shapes
+    # load teacher model based on original from:
     teacher_denoiser = Denoiser(image_size=32, noise_embed_dims=256, patch_size=2,
             embed_dim=768, dropout=0, n_layers=12)
     state_dict = torch.load('state_dict_378000.pth', map_location=accelerator.device)
-    teacher_denoiser = teacher_denoiser.half()
     teacher_denoiser.load_state_dict(state_dict)
     teacher_denoiser = teacher_denoiser.to(accelerator.device)
     teacher_denoiser.eval()
@@ -182,8 +183,8 @@ def main(config: ModelConfig) -> None:
                 with torch.no_grad():
                     teacher_pred, teacher_features = teacher_denoiser(x_noisy, noise_level.view(-1, 1), label, return_features=True)
                 
-                feature_loss = sum(feature_loss_fn(s_feat, t_feat.detach(), reduction="mean") for s_feat, t_feat in zip(student_features, teacher_features))
-                distillation_loss = distillation_loss_fn(student_pred, teacher_pred, reduction="mean")
+                feature_loss = sum(feature_loss_fn(adjustment_layer(s_feat), t_feat.detach()) for s_feat, t_feat in zip(student_features, teacher_features))
+                distillation_loss = distillation_loss_fn(student_pred, teacher_pred)
                 
                 total_loss = reconstruction_loss + train_config.output_weight * distillation_loss + train_config.feature_weight * feature_loss
 

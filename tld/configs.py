@@ -20,15 +20,15 @@ class DataDownloadConfig:
 
 @dataclass
 class DenoiserConfig:
-    image_size: int = 16
-    noise_embed_dims: int = 128  # Reduced embedding dimensions
+    image_size: int = 32
+    noise_embed_dims: int = 128
     patch_size: int = 2
-    embed_dim: int = 64  # Further reduced embedding dimension
+    embed_dim: int = 64
     dropout: float = 0
-    n_layers: int = 2  # Fewer layers
+    n_layers: int = 3
     text_emb_size: int = 768
-    n_channels: int = 4  
-    mlp_multiplier: int = 2  # Reduced MLP size
+    n_channels: int = 4 
+    mlp_multiplier: int = 3
 
 @dataclass
 class DenoiserLoad:
