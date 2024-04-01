@@ -20,15 +20,15 @@ class DataDownloadConfig:
 
 @dataclass
 class DenoiserConfig:
-    image_size: int = 16,
-    noise_embed_dims: int = 128,  # Reduced embedding dimensions
-    patch_size: int = 2,
-    embed_dim: int = 64,  # Further reduced embedding dimension
-    dropout: float = 0,
-    n_layers: int = 2,  # Fewer layers
-    text_emb_size: int = 768,
-    n_channels: int = 4,  
-    mlp_multiplier: int = 2,  # Reduced MLP size
+    image_size: int = 16
+    noise_embed_dims: int = 128  # Reduced embedding dimensions
+    patch_size: int = 2
+    embed_dim: int = 64  # Further reduced embedding dimension
+    dropout: float = 0
+    n_layers: int = 2  # Fewer layers
+    text_emb_size: int = 768
+    n_channels: int = 4  
+    mlp_multiplier: int = 2  # Reduced MLP size
 
 @dataclass
 class DenoiserLoad:
@@ -67,7 +67,7 @@ class TrainConfig:
     beta_b: float = 0.75
     save_and_eval_every_iters: int = 1000
     run_id: str = ""
-    model_name: str = ""
+    model_name: str = "full_state_dict.pth"
     compile: bool = True
     save_model: bool = True
     use_wandb: bool = True
