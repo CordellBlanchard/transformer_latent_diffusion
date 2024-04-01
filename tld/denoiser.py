@@ -125,6 +125,9 @@ class Denoiser(nn.Module):
         noise_label_emb = torch.cat([noise_level, label], dim=1)  # bs, 2, d
         noise_label_emb = self.norm(noise_label_emb)
 
-        x, features = self.denoiser_trans_block(x, noise_label_emb, return_features=return_features)
+        if return_features:
+            x, features = self.denoiser_trans_block(x, noise_label_emb, return_features=return_features)
+        else:
+            x = self.denoiser_trans_block(x, noise_label_emb, return_features=return_features)
 
         return (x, features) if return_features else x
