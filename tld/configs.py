@@ -58,7 +58,7 @@ class DataConfig:
 class TrainConfig:
     batch_size: int = 64 
     lr: float = 3e-4
-    n_epoch: int = 100
+    n_epoch: int = 500
     alpha: float = 0.999
     output_weight = 1
     feature_weight = 1
