@@ -24,8 +24,8 @@ class DenoiserConfig:
     noise_embed_dims: int = 128
     patch_size: int = 2
     embed_dim: int = 512
-    dropout: float = 0
-    n_layers: int = 3
+    dropout: float = 0.1
+    n_layers: int = 6
     text_emb_size: int = 768
     n_channels: int = 4 
     mlp_multiplier: int = 3
@@ -56,15 +56,15 @@ class DataConfig:
 
 @dataclass
 class TrainConfig:
-    batch_size: int = 128 
+    batch_size: int = 64 
     lr: float = 3e-4
     n_epoch: int = 100
     alpha: float = 0.999
     output_weight = 1
     feature_weight = 1
     from_scratch: bool = True
-    beta_a: float = 0.75
-    beta_b: float = 0.75
+    beta_a: float = 1
+    beta_b: float = 2.5
     save_and_eval_every_iters: int = 1000
     run_id: str = ""
     model_name: str = "full_state_dict.pth"
