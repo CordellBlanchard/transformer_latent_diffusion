@@ -68,6 +68,7 @@ class TrainConfig:
     save_and_eval_every_iters: int = 1000
     run_id: str = ""
     model_name: str = "full_state_dict.pth"
+    teacher_model_name: str = "state_dict_378000.pth"
     compile: bool = True
     save_model: bool = True
     use_wandb: bool = True

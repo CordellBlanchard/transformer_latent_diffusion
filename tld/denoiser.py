@@ -4,7 +4,7 @@ import torch
 from einops.layers.torch import Rearrange
 from torch import nn
 
-from tld.transformer_blocks import DecoderBlock, MLPSepConv, SinusoidalEmbedding
+from tld.legacy_transformer_blocks import DecoderBlock, MLPSepConv, SinusoidalEmbedding
 
 
 class DenoiserTransBlock(nn.Module):

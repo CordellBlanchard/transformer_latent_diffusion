@@ -13,7 +13,7 @@ setup(
     author="Alexandru Papiu",
     author_email="alex.papiu@gmail.com",
     description="Transformer Latent Diffusion",
-    url="https://github.com/apapiu/transformer_latent_diffusion",
+    url="https://github.com/CordellBlanchard/transformer_latent_diffusion",
     packages=find_packages(exclude=["tests*"]),
     classifiers=[
         "Programming Language :: Python :: 3",

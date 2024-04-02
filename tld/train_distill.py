@@ -22,8 +22,8 @@ from tld.configs import ModelConfig
 
 
 def eval_gen(diffuser: DiffusionGenerator, labels: Tensor, img_size: int) -> Image:
-    class_guidance = 4.5
-    seed = 10
+    class_guidance = 6
+    seed = 11
     out, _ = diffuser.generate(
         labels=torch.repeat_interleave(labels, 2, dim=0),
         num_imgs=16,
@@ -86,7 +86,7 @@ def main(config: ModelConfig) -> None:
     # load teacher model based on original from:
     teacher_denoiser = Denoiser(image_size=32, noise_embed_dims=256, patch_size=2,
             embed_dim=768, dropout=0, n_layers=12)
-    state_dict = torch.load('state_dict_378000.pth', map_location=accelerator.device)
+    state_dict = torch.load(train_config.teacher_model_name, map_location=accelerator.device)
     teacher_denoiser.load_state_dict(state_dict)
     teacher_denoiser = teacher_denoiser.to(accelerator.device)
     teacher_denoiser.eval()
@@ -120,7 +120,7 @@ def main(config: ModelConfig) -> None:
         teacher_diffuser = DiffusionGenerator(teacher_denoiser, vae, accelerator.device, torch.float32)
 
     accelerator.print("model prep")
-    model, train_loader, optimizer = accelerator.prepare(model, train_loader, optimizer)
+    model, teacher_denoiser, train_loader, optimizer = accelerator.prepare(model, teacher_denoiser, train_loader, optimizer)
 
     if train_config.use_wandb:
         accelerator.init_trackers(project_name="cifar_diffusion", config=asdict(config))
