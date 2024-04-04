@@ -92,6 +92,15 @@ def main(config: ModelConfig) -> None:
     teacher_denoiser.eval()
 
     model = Denoiser(**asdict(denoiser_config))
+    (
+        reconstruction_loss_weight,
+        distillation_loss_weight,
+        feature_loss_weight
+    ) = (
+        torch.nn.Parameter(torch.randn(())),
+        torch.nn.Parameter(torch.randn(())),
+        torch.nn.Parameter(torch.randn(())),
+    )
 
     distillation_loss_fn = nn.MSELoss() # distillation loss
     feature_loss_fn = nn.MSELoss() # feature distillation loss
@@ -191,7 +200,11 @@ def main(config: ModelConfig) -> None:
                 feature_loss = sum(feature_loss_fn(adjustment_layer(s_feat), t_feat.detach()) for s_feat, t_feat in zip(student_features, teacher_features))
                 distillation_loss = distillation_loss_fn(student_pred, teacher_pred)
                 
-                total_loss = reconstruction_loss + train_config.output_weight * distillation_loss + train_config.feature_weight * feature_loss
+                total_loss = (
+                    torch.exp(-reconstruction_loss_weight) * reconstruction_loss + 
+                    torch.exp(-distillation_loss_weight) * distillation_loss + 
+                    torch.exp(-feature_loss_weight) * feature_loss
+                ) + reconstruction_loss_weight + distillation_loss_weight + feature_loss_weight
 
                 accelerator.log({"train_loss": total_loss.item(), "reconstruction_loss": reconstruction_loss.item(), "distillation_loss": distillation_loss.item(), "feature_loss": feature_loss.item()}, step=global_step)
                 accelerator.backward(total_loss)
