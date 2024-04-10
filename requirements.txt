@@ -10,6 +10,10 @@ Pillow
 wandb
 git+https://github.com/openai/CLIP.git
 
+# for metric calcluations:
+pytorch-fid
+thop
+
 #for data processing:
 h5py
 webdataset

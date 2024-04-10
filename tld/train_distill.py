@@ -14,6 +14,7 @@ from PIL.Image import Image
 from torch import Tensor, nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from thop import profile
 from tqdm import tqdm
 
 from tld.denoiser import Denoiser
@@ -120,6 +121,9 @@ def main(config: ModelConfig) -> None:
         model.load_state_dict(full_state_dict["model_ema"])
         optimizer.load_state_dict(full_state_dict["opt_state"])
         global_step = full_state_dict["global_step"]
+        reconstruction_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["reconstruction_loss_weight"]))
+        distillation_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["distillation_loss_weight"]))
+        feature_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["feature_loss_weight"]))
     else:
         global_step = 0
 
@@ -160,6 +164,12 @@ def main(config: ModelConfig) -> None:
             mask = torch.rand(y.size(0), device=accelerator.device) < prob
             label[mask] = 0  # OR replacement_vector
 
+            # calculate MACs to compare model to teacher
+            if train_config.calc_macs and accelerator.is_main_process:
+                macs, params = profile(model, inputs=(x_noisy, noise_level.view(-1, 1), label, False), verbose=False)
+                accelerator.print(f"MACs: {macs}, Params: {params}")
+                train_config.calc_macs = False # only needs to be done once
+
             if global_step % train_config.save_and_eval_every_iters == 0:
                 accelerator.wait_for_everyone()
                 if accelerator.is_main_process:
@@ -178,6 +188,9 @@ def main(config: ModelConfig) -> None:
                         "model_ema": ema_model.state_dict(),
                         "opt_state": opt_unwrapped.state_dict(),
                         "global_step": global_step,
+                        "reconstruction_loss_weight": reconstruction_loss_weight.item(),  # Save as item for scalar
+                        "distillation_loss_weight": distillation_loss_weight.item(),
+                        "feature_loss_weight": feature_loss_weight.item(),
                     }
                     if train_config.save_model:
                         accelerator.save(full_state_dict, train_config.model_name)

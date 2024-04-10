@@ -72,6 +72,7 @@ class TrainConfig:
     compile: bool = True
     save_model: bool = True
     use_wandb: bool = True
+    calc_macs: bool = False
 
 
 @dataclass
