@@ -2,6 +2,7 @@
 
 import copy
 from dataclasses import asdict
+from itertools import chain
 
 import numpy as np
 import torch
@@ -20,6 +21,8 @@ from tqdm import tqdm
 from tld.denoiser import Denoiser
 from tld.diffusion import DiffusionGenerator
 from tld.configs import ModelConfig
+from tld.alignment_net import AlignmentNetwork
+from tld.uncertainty_loss import HomoscedasticUncertaintyLoss
 
 
 def eval_gen(diffuser: DiffusionGenerator, labels: Tensor, img_size: int) -> Image:
@@ -83,7 +86,19 @@ def main(config: ModelConfig) -> None:
     if accelerator.is_main_process:
         vae = vae.to(accelerator.device)
 
-    adjustment_layer = nn.Linear(denoiser_config.embed_dim, teacher_embed_dim).to(accelerator.device) # used for feature distillation to match shapes
+    alignment_network = AlignmentNetwork(
+        {
+            1 : (768, 512), 
+            3 : (768, 512), 
+            5 : (768, 512), 
+            7 : (768, 512), 
+            9 : (768, 512), 
+            11 : (768, 512)
+        }
+    )
+
+    # adjustment_layer = nn.Linear(denoiser_config.embed_dim, teacher_embed_dim).to(accelerator.device) # used for feature distillation to match shapes
+
     # load teacher model based on original from:
     teacher_denoiser = Denoiser(image_size=32, noise_embed_dims=256, patch_size=2,
             embed_dim=768, dropout=0, n_layers=12)
@@ -93,20 +108,18 @@ def main(config: ModelConfig) -> None:
     teacher_denoiser.eval()
 
     model = Denoiser(**asdict(denoiser_config))
-    (
-        reconstruction_loss_weight,
-        distillation_loss_weight,
-        feature_loss_weight
-    ) = (
-        torch.nn.Parameter(torch.randn(())),
-        torch.nn.Parameter(torch.randn(())),
-        torch.nn.Parameter(torch.randn(())),
-    )
-
     distillation_loss_fn = nn.MSELoss() # distillation loss
     feature_loss_fn = nn.MSELoss() # feature distillation loss
     reconstruction_loss_fn = nn.MSELoss() # original task loss
-    optimizer = torch.optim.Adam(model.parameters(), lr=train_config.lr)
+    uncertainty_loss_fn = HomoscedasticUncertaintyLoss() # total loss
+    optimizer = torch.optim.Adam(
+        chain(
+            model.parameters(), 
+            alignment_network.parameters(),
+            uncertainty_loss_fn.parameters()
+        ),
+        lr=train_config.lr
+    )
 
     if train_config.compile:
         accelerator.print("Compiling model:")
@@ -119,12 +132,13 @@ def main(config: ModelConfig) -> None:
                 train_config.model_name, run_path=f"apapiu/cifar_diffusion/runs/{train_config.run_id}", replace=True
             )
         full_state_dict = torch.load(train_config.model_name)
+
+        global_step = full_state_dict["global_step"]
+
         model.load_state_dict(full_state_dict["model_ema"])
         optimizer.load_state_dict(full_state_dict["opt_state"])
-        global_step = full_state_dict["global_step"]
-        reconstruction_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["reconstruction_loss_weight"]))
-        distillation_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["distillation_loss_weight"]))
-        feature_loss_weight = torch.nn.Parameter(torch.tensor(full_state_dict["feature_loss_weight"]))
+        alignment_network.load_state_dict(full_state_dict["alignment_network"])
+        uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
     else:
         global_step = 0
 
@@ -134,7 +148,22 @@ def main(config: ModelConfig) -> None:
         teacher_diffuser = DiffusionGenerator(teacher_denoiser, vae, accelerator.device, torch.float32)
 
     accelerator.print("model prep")
-    model, teacher_denoiser, train_loader, optimizer = accelerator.prepare(model, teacher_denoiser, train_loader, optimizer)
+    (
+        model, 
+        teacher_denoiser, 
+        alignment_network, 
+        uncertainty_loss_fn,
+        train_loader, 
+        optimizer,
+    ) = \
+        accelerator.prepare(
+        model, 
+        teacher_denoiser, 
+        alignment_network, 
+        uncertainty_loss_fn,
+        train_loader, 
+        optimizer,
+    )
 
     if train_config.use_wandb:
         accelerator.init_trackers(project_name="cifar_diffusion", config=asdict(config))
@@ -189,9 +218,8 @@ def main(config: ModelConfig) -> None:
                         "model_ema": ema_model.state_dict(),
                         "opt_state": opt_unwrapped.state_dict(),
                         "global_step": global_step,
-                        "reconstruction_loss_weight": reconstruction_loss_weight.item(),  # Save as item for scalar
-                        "distillation_loss_weight": distillation_loss_weight.item(),
-                        "feature_loss_weight": feature_loss_weight.item(),
+                        "alignment_network": alignment_network.state_dict(),
+                        "uncertainty_loss" : uncertainty_loss_fn.state_dict()
                     }
                     if train_config.save_model:
                         accelerator.save(full_state_dict, train_config.model_name)
@@ -211,16 +239,23 @@ def main(config: ModelConfig) -> None:
                 with torch.no_grad():
                     teacher_pred, teacher_features = teacher_denoiser(x_noisy, noise_level.view(-1, 1), label, return_features=True)
                 
-                feature_loss = sum(feature_loss_fn(adjustment_layer(s_feat), t_feat.detach()) for s_feat, t_feat in zip(student_features, teacher_features))
+                feature_loss = sum(
+                    feature_loss_fn(student_feature, aligned_teacher_feature)
+                    for student_feature, aligned_teacher_feature in zip(student_features, alignment_network(teacher_features))
+                )
                 distillation_loss = distillation_loss_fn(student_pred, teacher_pred)
-                
-                total_loss = (
-                    torch.exp(-reconstruction_loss_weight) * reconstruction_loss + 
-                    torch.exp(-distillation_loss_weight) * distillation_loss + 
-                    torch.exp(-feature_loss_weight) * feature_loss
-                ) + reconstruction_loss_weight + distillation_loss_weight + feature_loss_weight
 
-                accelerator.log({"train_loss": total_loss.item(), "reconstruction_loss": reconstruction_loss.item(), "distillation_loss": distillation_loss.item(), "feature_loss": feature_loss.item()}, step=global_step)
+
+                total_loss = uncertainty_loss_fn(reconstruction_loss, distillation_loss, feature_loss)
+                accelerator.log(
+                    {
+                        "train_loss" : total_loss.item(), 
+                        "reconstruction_loss" : reconstruction_loss.item(), 
+                        "distillation_loss" : distillation_loss.item(), 
+                        "feature_loss" : feature_loss.item()
+                    }, 
+                    step = global_step
+                )
                 accelerator.backward(total_loss)
                 optimizer.step()
 
