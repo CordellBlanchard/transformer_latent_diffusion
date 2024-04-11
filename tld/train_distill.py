@@ -137,13 +137,14 @@ def main(config: ModelConfig) -> None:
 
         model.load_state_dict(full_state_dict["model_ema"])
         optimizer.load_state_dict(full_state_dict["opt_state"])
-        alignment_network.load_state_dict(full_state_dict["alignment_network"])
+        alignment_network.load_state_dict(full_state_dict["alignment_network_ema"])
         uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
     else:
         global_step = 0
 
     if accelerator.is_local_main_process:
         ema_model = copy.deepcopy(model).to(accelerator.device)
+        ema_alignment_network = copy.deepcopy(alignment_network).to(accelerator.device)
         diffuser = DiffusionGenerator(ema_model, vae, accelerator.device, torch.float32)
         teacher_diffuser = DiffusionGenerator(teacher_denoiser, vae, accelerator.device, torch.float32)
 
@@ -218,7 +219,7 @@ def main(config: ModelConfig) -> None:
                         "model_ema": ema_model.state_dict(),
                         "opt_state": opt_unwrapped.state_dict(),
                         "global_step": global_step,
-                        "alignment_network": alignment_network.state_dict(),
+                        "alignment_network_ema": ema_alignment_network.state_dict(),
                         "uncertainty_loss" : uncertainty_loss_fn.state_dict()
                     }
                     if train_config.save_model:
@@ -261,6 +262,7 @@ def main(config: ModelConfig) -> None:
 
                 if accelerator.is_main_process:
                     update_ema(ema_model, model, alpha=train_config.alpha)
+                    update_ema(ema_alignment_network, alignment_network, alpha=train_config.alpha)
 
             global_step += 1
     accelerator.end_training()
