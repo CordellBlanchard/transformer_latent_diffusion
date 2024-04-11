@@ -3,6 +3,7 @@
 import copy
 from dataclasses import asdict
 from itertools import chain
+import os
 
 import numpy as np
 import torch
@@ -129,9 +130,9 @@ def main(config: ModelConfig) -> None:
         accelerator.print("Loading Model:")
         if train_config.run_id is not None:
             wandb.restore(
-                train_config.model_name, run_path=f"apapiu/cifar_diffusion/runs/{train_config.run_id}", replace=True
+                train_config.checkpoint_model_name or train_config.model_name, run_path=f"apapiu/cifar_diffusion/runs/{train_config.run_id}", replace=True
             )
-        full_state_dict = torch.load(train_config.model_name)
+        full_state_dict = torch.load(train_config.checkpoint_model_name or train_config.model_name)
 
         global_step = full_state_dict["global_step"]
 
@@ -168,6 +169,8 @@ def main(config: ModelConfig) -> None:
 
     if train_config.use_wandb:
         accelerator.init_trackers(project_name="cifar_diffusion", config=asdict(config))
+    if train_config.save_individual_checkpoints and not os.path.exists("models"):
+        os.makedirs("models")
 
     accelerator.print(count_parameters(model))
     accelerator.print(count_parameters_per_layer(model))
@@ -225,6 +228,9 @@ def main(config: ModelConfig) -> None:
                     }
                     if train_config.save_model:
                         accelerator.save(full_state_dict, train_config.model_name)
+                        # Save on a per-epoch basis as well
+                        if train_config.save_individual_checkpoints:
+                            accelerator.save(full_state_dict, f"models/state_dict_{global_step}.pth")
                         if train_config.use_wandb:
                             wandb.save(train_config.model_name)
 

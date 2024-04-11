@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 import torch
 
 @dataclass
@@ -68,6 +69,8 @@ class TrainConfig:
     save_and_eval_every_iters: int = 1000
     run_id: str = ""
     model_name: str = "full_state_dict.pth"
+    checkpoint_model_name : Optional[str] = None
+    save_individual_checkpoints : bool = False
     teacher_model_name: str = "state_dict_378000.pth"
     compile: bool = True
     save_model: bool = True

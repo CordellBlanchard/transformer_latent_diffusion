@@ -1,7 +1,8 @@
 import argparse
+from typing import Optional
 
 from tld.train_distill import main
-from tld.configs import DataConfig, ModelConfig
+from tld.configs import DataConfig, ModelConfig, TrainConfig
 import wandb
 
 if __name__ == '__main__':
@@ -14,6 +15,8 @@ if __name__ == '__main__':
     argparser.add_argument('--from-checkpoint', action = 'store_true') # Default is from scratch
     argparser.add_argument('--run-id', type = str, default = None) # Remark: run_id being none avoids restoring from wandb, using a local model file instead.
     argparser.add_argument('--model-name', type = str, default = "full_state_dict.pth")
+    argparser.add_argument('--checkpoint-model-name', type = Optional[str], default = None)
+    argparser.add_argument('--save-individual-checkpoints', action = 'store_true')
     argparser.add_argument('--batch-size', type = int, default = 64)
     argparser.add_argument('--wandb-mode', type = str, choices = ['online', 'offline'], default = 'online')
     args = argparser.parse_args()
@@ -26,14 +29,17 @@ if __name__ == '__main__':
         text_emb_path = args.text_emb_path,
         val_path = args.val_enc_path
     )
-    model_config = ModelConfig(data_config = data_config)
-
-    model_config.train_config.compile = False # torch.compile not supported on Windows
-    model_config.train_config.batch_size = args.batch_size
-    model_config.train_config.from_scratch = not args.from_checkpoint
-    model_config.train_config.model_name = args.model_name
-    model_config.train_config.run_id = args.run_id
-    model_config.train_config.teacher_model_name = args.teacher_model
+    train_config = TrainConfig(
+        compile = False,  # torch.compile not supported on Windows
+        batch_size = args.batch_size,
+        from_scratch = not args.from_checkpoint,
+        model_name = args.model_name,
+        checkpoint_model_name = args.checkpoint_model_name,
+        save_individual_checkpoints = args.save_individual_checkpoints,
+        run_id = args.run_id,
+        teacher_model_name = args.teacher_model,
+    )
+    model_config = ModelConfig(data_config = data_config, train_config = train_config)
 
     main(model_config)
 
