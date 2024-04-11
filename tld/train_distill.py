@@ -144,6 +144,7 @@ def main(config: ModelConfig) -> None:
 
     if accelerator.is_local_main_process:
         ema_model = copy.deepcopy(model).to(accelerator.device)
+        # ema_alignment_network = copy.deepcopy(alignment_network).to(accelerator.device)
         diffuser = DiffusionGenerator(ema_model, vae, accelerator.device, torch.float32)
         teacher_diffuser = DiffusionGenerator(teacher_denoiser, vae, accelerator.device, torch.float32)
 
@@ -268,6 +269,7 @@ def main(config: ModelConfig) -> None:
 
                 if accelerator.is_main_process:
                     update_ema(ema_model, model, alpha=train_config.alpha)
+                    # update_ema(ema_alignment_network, alignment_network, alpha=train_config.alpha)
 
             global_step += 1
     accelerator.end_training()
