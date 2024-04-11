@@ -180,7 +180,9 @@ def main(config: ModelConfig) -> None:
     for i in range(1, train_config.n_epoch + 1):
         accelerator.print(f"epoch: {i}")
 
-        for x, y in tqdm(train_loader):
+        epoch_average_loss = 0
+
+        for j, (x, y) in enumerate(tqdm(train_loader)):
             x = x / config.vae_cfg.vae_scale_factor
 
             noise_level = torch.tensor(
@@ -253,6 +255,8 @@ def main(config: ModelConfig) -> None:
 
 
                 total_loss = uncertainty_loss_fn(reconstruction_loss, distillation_loss, feature_loss)
+                epoch_average_loss = (epoch_average_loss * j + total_loss.item()) / (j + 1)
+
                 accelerator.log(
                     {
                         "train_loss" : total_loss.item(), 
@@ -264,7 +268,6 @@ def main(config: ModelConfig) -> None:
                 )
                 accelerator.backward(total_loss)
                 optimizer.step()
-                scheduler.step(total_loss)
 
                 accelerator.log(
                     {
@@ -278,6 +281,9 @@ def main(config: ModelConfig) -> None:
                     update_ema(ema_alignment_loss_fn, alignment_loss_fn, alpha=train_config.alpha)
 
             global_step += 1
+
+        scheduler.step(epoch_average_loss)
+
     accelerator.end_training()
 
 
