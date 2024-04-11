@@ -16,7 +16,7 @@ if __name__ == '__main__':
     argparser.add_argument('--run-id', type = str, default = None) # Remark: run_id being none avoids restoring from wandb, using a local model file instead.
     argparser.add_argument('--model-name', type = str, default = "full_state_dict.pth")
     argparser.add_argument('--checkpoint-model-name', type = Optional[str], default = None)
-    argparser.add_argument('--save-individual-checkpoints', action = 'store_true')
+    argparser.add_argument('--disable-individual-checkpoints', action = 'store_true')
     argparser.add_argument('--batch-size', type = int, default = 64)
     argparser.add_argument('--wandb-mode', type = str, choices = ['online', 'offline'], default = 'online')
     args = argparser.parse_args()
@@ -35,7 +35,7 @@ if __name__ == '__main__':
         from_scratch = not args.from_checkpoint,
         model_name = args.model_name,
         checkpoint_model_name = args.checkpoint_model_name,
-        save_individual_checkpoints = args.save_individual_checkpoints,
+        save_individual_checkpoints = not args.disable_individual_checkpoints,
         run_id = args.run_id,
         teacher_model_name = args.teacher_model,
     )
