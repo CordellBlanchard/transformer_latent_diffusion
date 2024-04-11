@@ -70,7 +70,7 @@ def main(config: ModelConfig) -> None:
     denoiser_config = config.denoiser_config
     train_config = config.train_config
     dataconfig = config.data_config
-    teacher_embed_dim = 768
+    teacher_embed_dim = 768 # TODO can be deleted?
 
     log_with="wandb" if train_config.use_wandb else None
     accelerator = Accelerator(mixed_precision="fp16", log_with=log_with)
@@ -92,13 +92,12 @@ def main(config: ModelConfig) -> None:
             # Each of these StudentTeacherPairs defines, in order, the student feature map index, the student 
             # feature map dimension, the teacher feature map index, and the teacher feature map dimension,
             # indexed from 0.
-            StudentTeacherPair(3, 512, 7, 768),
-            StudentTeacherPair(4, 512, 9, 768),
-            StudentTeacherPair(5, 512, 11, 768),
+            # note: max index for teacher is 11 and max index for student is denoiser_config.n_layers - 1
+            StudentTeacherPair(0, denoiser_config.embed_dim, 0, 768),
+            StudentTeacherPair(2, denoiser_config.embed_dim, 5, 768),
+            StudentTeacherPair(5, denoiser_config.embed_dim, 11, 768),
         ]
     )
-
-    # adjustment_layer = nn.Linear(denoiser_config.embed_dim, teacher_embed_dim).to(accelerator.device) # used for feature distillation to match shapes
 
     # load teacher model based on original from:
     teacher_denoiser = Denoiser(image_size=32, noise_embed_dims=256, patch_size=2,
@@ -138,6 +137,8 @@ def main(config: ModelConfig) -> None:
 
         model.load_state_dict(full_state_dict["model_ema"])
         optimizer.load_state_dict(full_state_dict["opt_state"])
+        if "scheduler_state" in full_state_dict:
+            scheduler.load_state_dict(full_state_dict["scheduler_state"])
         alignment_loss_fn.load_state_dict(full_state_dict["alignment_loss_fn_ema"])
         uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
     else:
@@ -224,6 +225,7 @@ def main(config: ModelConfig) -> None:
                     full_state_dict = {
                         "model_ema": ema_model.state_dict(),
                         "opt_state": opt_unwrapped.state_dict(),
+                        "scheduler_state": scheduler.state_dict(),
                         "global_step": global_step,
                         "alignment_loss_fn_ema": ema_alignment_loss_fn.state_dict(),
                         "uncertainty_loss" : uncertainty_loss_fn.state_dict()
