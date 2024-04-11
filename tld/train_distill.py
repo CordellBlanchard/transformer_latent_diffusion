@@ -21,7 +21,7 @@ from tqdm import tqdm
 from tld.denoiser import Denoiser
 from tld.diffusion import DiffusionGenerator
 from tld.configs import ModelConfig
-from tld.alignment_net import AlignmentNetwork
+from tld.alignment import AlignmentLoss, StudentTeacherPair
 from tld.uncertainty_loss import HomoscedasticUncertaintyLoss
 
 
@@ -86,15 +86,15 @@ def main(config: ModelConfig) -> None:
     if accelerator.is_main_process:
         vae = vae.to(accelerator.device)
 
-    alignment_network = AlignmentNetwork(
-        {
-            1 : (768, 512), 
-            3 : (768, 512), 
-            5 : (768, 512), 
-            7 : (768, 512), 
-            9 : (768, 512), 
-            11 : (768, 512)
-        }
+    alignment_loss_fn = AlignmentLoss(
+        alignment_map = [
+            # Each of these StudentTeacherPairs defines, in order, the student feature map index, the student 
+            # feature map dimension, the teacher feature map index, and the teacher feature map dimension,
+            # indexed from 0.
+            StudentTeacherPair(3, 512, 7, 768),
+            StudentTeacherPair(4, 512, 9, 768),
+            StudentTeacherPair(5, 512, 11, 768),
+        ]
     )
 
     # adjustment_layer = nn.Linear(denoiser_config.embed_dim, teacher_embed_dim).to(accelerator.device) # used for feature distillation to match shapes
@@ -109,17 +109,17 @@ def main(config: ModelConfig) -> None:
 
     model = Denoiser(**asdict(denoiser_config))
     distillation_loss_fn = nn.MSELoss() # distillation loss
-    feature_loss_fn = nn.MSELoss() # feature distillation loss
     reconstruction_loss_fn = nn.MSELoss() # original task loss
     uncertainty_loss_fn = HomoscedasticUncertaintyLoss() # total loss
     optimizer = torch.optim.Adam(
         chain(
             model.parameters(), 
-            alignment_network.parameters(),
+            alignment_loss_fn.parameters(),
             uncertainty_loss_fn.parameters()
         ),
         lr=train_config.lr
     )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5, verbose=True)
 
     if train_config.compile:
         accelerator.print("Compiling model:")
@@ -137,7 +137,7 @@ def main(config: ModelConfig) -> None:
 
         model.load_state_dict(full_state_dict["model_ema"])
         optimizer.load_state_dict(full_state_dict["opt_state"])
-        alignment_network.load_state_dict(full_state_dict["alignment_network"])
+        alignment_loss_fn.load_state_dict(full_state_dict["alignment_loss_fn"])
         uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
     else:
         global_step = 0
@@ -151,7 +151,7 @@ def main(config: ModelConfig) -> None:
     (
         model, 
         teacher_denoiser, 
-        alignment_network, 
+        alignment_loss_fn, 
         uncertainty_loss_fn,
         train_loader, 
         optimizer,
@@ -159,7 +159,7 @@ def main(config: ModelConfig) -> None:
         accelerator.prepare(
         model, 
         teacher_denoiser, 
-        alignment_network, 
+        alignment_loss_fn, 
         uncertainty_loss_fn,
         train_loader, 
         optimizer,
@@ -170,6 +170,7 @@ def main(config: ModelConfig) -> None:
 
     accelerator.print(count_parameters(model))
     accelerator.print(count_parameters_per_layer(model))
+    wandb.watch([model, alignment_loss_fn], log = "all")
 
     ### Train:
     for i in range(1, train_config.n_epoch + 1):
@@ -218,7 +219,7 @@ def main(config: ModelConfig) -> None:
                         "model_ema": ema_model.state_dict(),
                         "opt_state": opt_unwrapped.state_dict(),
                         "global_step": global_step,
-                        "alignment_network": alignment_network.state_dict(),
+                        "alignment_loss_fn": alignment_loss_fn.state_dict(),
                         "uncertainty_loss" : uncertainty_loss_fn.state_dict()
                     }
                     if train_config.save_model:
@@ -227,6 +228,7 @@ def main(config: ModelConfig) -> None:
                             wandb.save(train_config.model_name)
 
             model.train()
+            alignment_loss_fn.train()
 
             with accelerator.accumulate():
                 ###train loop:
@@ -239,10 +241,7 @@ def main(config: ModelConfig) -> None:
                 with torch.no_grad():
                     teacher_pred, teacher_features = teacher_denoiser(x_noisy, noise_level.view(-1, 1), label, return_features=True)
                 
-                feature_loss = sum(
-                    feature_loss_fn(student_feature, aligned_teacher_feature)
-                    for student_feature, aligned_teacher_feature in zip(student_features, alignment_network(teacher_features))
-                )
+                feature_loss = alignment_loss_fn(student_features, teacher_features)
                 distillation_loss = distillation_loss_fn(student_pred, teacher_pred)
 
 
@@ -258,6 +257,14 @@ def main(config: ModelConfig) -> None:
                 )
                 accelerator.backward(total_loss)
                 optimizer.step()
+                scheduler.step(total_loss)
+
+                accelerator.log(
+                    {
+                        "lr": optimizer.param_groups[0]["lr"]
+                    },
+                    step = global_step
+                )
 
                 if accelerator.is_main_process:
                     update_ema(ema_model, model, alpha=train_config.alpha)
