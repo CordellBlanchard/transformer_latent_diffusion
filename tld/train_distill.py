@@ -141,6 +141,16 @@ def main(config: ModelConfig) -> None:
             scheduler.load_state_dict(full_state_dict["scheduler_state"])
         alignment_loss_fn.load_state_dict(full_state_dict["alignment_loss_fn_ema"])
         uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
+
+        # Check and update learning rate if different
+        current_lr = optimizer.param_groups[0]['lr']
+        if current_lr != train_config.lr:
+            accelerator.print(f"Updating learning rate from {current_lr} to {train_config.lr}")
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = train_config.lr
+            
+            # Reinitialize the scheduler
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5, verbose=True)
     else:
         global_step = 0
 

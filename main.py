@@ -17,7 +17,7 @@ if __name__ == '__main__':
     argparser.add_argument('--checkpoint-model-name', type = str, default = None)
     argparser.add_argument('--disable-individual-checkpoints', action = 'store_true')
     argparser.add_argument('--batch-size', type = int, default = 64)
-    argparser.add_argument('--lr', type=float, default=3e-4)
+    argparser.add_argument('--lr', type = float, default = 3e-4)
     argparser.add_argument('--wandb-mode', type = str, choices = ['online', 'offline'], default = 'online')
     args = argparser.parse_args()
 
