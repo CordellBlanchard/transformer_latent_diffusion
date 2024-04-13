@@ -76,6 +76,7 @@ class TrainConfig:
     save_model: bool = True
     use_wandb: bool = True
     calc_macs: bool = False
+    disable_feature_supervision: bool = False
 
 
 @dataclass

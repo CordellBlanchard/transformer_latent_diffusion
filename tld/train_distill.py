@@ -93,9 +93,12 @@ def main(config: ModelConfig) -> None:
             # feature map dimension, the teacher feature map index, and the teacher feature map dimension,
             # indexed from 0.
             # note: max index for teacher is 11 and max index for student is denoiser_config.n_layers - 1
-            StudentTeacherPair(0, denoiser_config.embed_dim, 0, 768),
-            StudentTeacherPair(2, denoiser_config.embed_dim, 5, 768),
-            StudentTeacherPair(5, denoiser_config.embed_dim, 11, 768),
+            # StudentTeacherPair(0, denoiser_config.embed_dim, 0, teacher_embed_dim),
+            # StudentTeacherPair(2, denoiser_config.embed_dim, 5, teacher_embed_dim),
+            # StudentTeacherPair(5, denoiser_config.embed_dim, 11, teacher_embed_dim),
+            StudentTeacherPair(3, denoiser_config.embed_dim, 7, teacher_embed_dim),
+            StudentTeacherPair(4, denoiser_config.embed_dim, 9, teacher_embed_dim),
+            StudentTeacherPair(5, denoiser_config.embed_dim, 11, teacher_embed_dim),
         ]
     )
 
@@ -185,7 +188,11 @@ def main(config: ModelConfig) -> None:
 
     accelerator.print(count_parameters(model))
     accelerator.print(count_parameters_per_layer(model))
-    wandb.watch([model, alignment_loss_fn], log = "all")
+    if train_config.use_wandb:
+        if train_config.disable_feature_supervision:
+            wandb.watch(model, log="all")
+        else:
+            wandb.watch([model, alignment_loss_fn], log = "all")
 
     ### Train:
     for i in range(1, train_config.n_epoch + 1):
@@ -262,22 +269,28 @@ def main(config: ModelConfig) -> None:
                 with torch.no_grad():
                     teacher_pred, teacher_features = teacher_denoiser(x_noisy, noise_level.view(-1, 1), label, return_features=True)
                 
-                feature_loss = alignment_loss_fn(student_features, teacher_features)
+                if not train_config.disable_feature_supervision:
+                    feature_loss = alignment_loss_fn(student_features, teacher_features)
+                else:
+                    # Remark: due to how the homoscedastic uncertainty loss is implemented, we can't set `feature_loss` to 0
+                    # since this would allow the feature_loss_uncertainty coefficient (and in turn the total_loss) to explode to -inf.
+                    # Setting it to 1 prevents this from occurring, and instead the feature_loss_coefficient should get optimized towards
+                    # 0 (the argminimum of e^-x + x).
+                    feature_loss = 1
                 distillation_loss = distillation_loss_fn(student_pred, teacher_pred)
 
 
                 total_loss = uncertainty_loss_fn(reconstruction_loss, distillation_loss, feature_loss)
                 epoch_average_loss = (epoch_average_loss * j + total_loss.item()) / (j + 1)
 
-                accelerator.log(
-                    {
-                        "train_loss" : total_loss.item(), 
-                        "reconstruction_loss" : reconstruction_loss.item(), 
-                        "distillation_loss" : distillation_loss.item(), 
-                        "feature_loss" : feature_loss.item()
-                    }, 
-                    step = global_step
-                )
+                losses_to_log = {
+                    "train_loss": total_loss.item(),
+                    "reconstruction_loss": reconstruction_loss.item(),
+                    "distillation_loss": distillation_loss.item()
+                }
+                if not train_config.disable_feature_supervision:
+                    losses_to_log["feature_loss"] = feature_loss.item()
+                accelerator.log(losses_to_log, step = global_step)
                 accelerator.backward(total_loss)
                 optimizer.step()
 
