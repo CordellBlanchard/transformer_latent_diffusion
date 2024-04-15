@@ -12,7 +12,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model, preprocess = clip.load(ClipConfig.clip_model_name, device=device)
 
 # Paths to the directories containing generated images and text prompts
-image_dir = '../../exp3_generated_images'
+image_dir = '../../exp4_generated_images'
 prompt_dir = '../../prompts'
 
 # Retrieve and sort image and prompt file paths
@@ -41,7 +41,6 @@ for image_path, prompt_path in tqdm(zip(generated_image_paths, prompt_paths)):
     try:
         text = clip.tokenize([prompt]).to(device)
     except RuntimeError as e:
-        num_skips += 1
         continue
 
     with torch.no_grad():
