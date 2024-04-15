@@ -26,6 +26,31 @@ from tld.alignment import AlignmentLoss, StudentTeacherPair
 from tld.uncertainty_loss import HomoscedasticUncertaintyLoss
 
 
+"""
+Following 3 functions are for changing student teacher feature map pairs from checkpointed model
+"""
+def safe_load_model_state(model, state_dict):
+    model_state = model.state_dict()
+    # Filter out keys that are not in the current model state
+    filtered_state_dict = {k: v for k, v in state_dict.items() if k in model_state and v.size() == model_state[k].size()}
+    model.load_state_dict(filtered_state_dict, strict=False)
+    return model
+
+def freeze_layers(model, layers_to_freeze, accelerator):
+    for name, param in model.named_parameters():
+        # You can customize the condition based on layer names or other attributes
+        if any(layer_name in name for layer_name in layers_to_freeze):
+            accelerator.print(f"freezing {name}")
+            param.requires_grad = False
+
+def unfreeze_layers(model, layers_to_freeze, accelerator):
+    for name, param in model.named_parameters():
+        # You can customize the condition based on layer names or other attributes
+        if any(layer_name in name for layer_name in layers_to_freeze):
+            accelerator.print(f"unfreezing {name}, current state: {param.requires_grad}")
+            param.requires_grad = True
+
+
 def eval_gen(diffuser: DiffusionGenerator, labels: Tensor, img_size: int) -> Image:
     class_guidance = 6
     seed = 11
@@ -143,8 +168,15 @@ def main(config: ModelConfig) -> None:
         if "scheduler_state" in full_state_dict:
             scheduler.load_state_dict(full_state_dict["scheduler_state"])
         alignment_loss_fn.load_state_dict(full_state_dict["alignment_loss_fn_ema"])
-        uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
+        # unfreeze_layers(alignment_loss_fn, ['student_to_teacher_projections.0', 'student_to_teacher_projections.1', 
+        #                                     'student_to_teacher_projections.2', 'student_to_teacher_projections.3',
+        #                                     'student_to_teacher_projections.4', 'student_to_teacher_projections.5'], accelerator)
+        # Safe loading for switching alignment_loss map
+        #safe_load_model_state(alignment_loss_fn, full_state_dict["alignment_loss_fn_ema"])
+        # Freeze certain layers based on your criteria (for switching alignment loss map)
+        #freeze_layers(alignment_loss_fn, ['student_to_teacher_projections.0', 'student_to_teacher_projections.2', 'student_to_teacher_projections.5'], accelerator)
 
+        uncertainty_loss_fn.load_state_dict(full_state_dict["uncertainty_loss"])
         # Check and update learning rate if different
         current_lr = optimizer.param_groups[0]['lr']
         if current_lr != train_config.lr:

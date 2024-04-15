@@ -40,7 +40,8 @@ if __name__ == '__main__':
         save_individual_checkpoints = not args.disable_individual_checkpoints,
         run_id = args.run_id,
         teacher_model_name = args.teacher_model,
-        disable_feature_supervision = args.disable_feature_supervision
+        disable_feature_supervision = args.disable_feature_supervision,
+        calc_macs = True,
     )
     model_config = ModelConfig(data_config = data_config, train_config = train_config)
 

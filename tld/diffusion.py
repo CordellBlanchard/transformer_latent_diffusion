@@ -145,12 +145,11 @@ class DiffusionTransformer:
         denoiser = Denoiser(**asdict(cfg.denoiser_cfg))
         denoiser = denoiser.to(cfg.denoiser_load.dtype)
 
-        if cfg.denoiser_load.file_url is not None:
-            if cfg.denoiser_load.local_filename is not None:
-                print(f"Downloading model from {cfg.denoiser_load.file_url}")
-                download_file(cfg.denoiser_load.file_url, cfg.denoiser_load.local_filename)
-                state_dict = torch.load(cfg.denoiser_load.local_filename, map_location=torch.device("cpu"))
-                denoiser.load_state_dict(state_dict)
+        if cfg.denoiser_load.local_filename is not None:
+            state_dict = torch.load(cfg.denoiser_load.local_filename, map_location=torch.device("cpu"))
+            if "model_ema" in state_dict:
+                state_dict = state_dict["model_ema"]
+            denoiser.load_state_dict(state_dict)
 
         denoiser = denoiser.to(device)
 
